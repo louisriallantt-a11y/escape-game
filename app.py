@@ -24,7 +24,7 @@ if 'role' not in st.session_state:
     if c2.button("🎮 JOUEUR"): st.session_state.role = "Joueur_Config"; st.rerun()
     st.stop()
 
-# --- LOGIQUE ADMIN ---
+# --- LOGIQUE ADMIN (LOUIS) ---
 if st.session_state.role == "Admin":
     st.title("🛡️ Dashboard Louis")
     col_l, col_o = st.columns(2)
@@ -37,9 +37,8 @@ if st.session_state.role == "Admin":
             db["game_started"] = True
             st.rerun()
     else:
-        # Affichage temps Admin simplifié (sans HTML complexe pour éviter les crashs)
         rem_admin = max(0, (90 * 60) - (time.time() - db["start_time"]))
-        st.subheader(f"⏳ GLOBAL : {int(rem_admin//60):02d}:{int(rem_admin%60):02d}")
+        st.metric("⏳ CHRONO GLOBAL", f"{int(rem_admin//60):02d}:{int(rem_admin%60):02d}")
         if st.button("🔴 RESET"):
             db["game_started"] = False
             st.rerun()
@@ -57,43 +56,40 @@ elif st.session_state.role == "Joueur_Config":
 
 # --- INTERFACE DE JEU JOUEUR ---
 elif "Joueur_" in st.session_state.role:
-    # Vérification stricte du lancement
     if not db["game_started"] or db["start_time"] <= 0:
         st.title("⏳ Attente de Louis...")
+        st.info("Le chrono n'est pas encore lancé.")
         time.sleep(2)
         st.rerun()
     else:
-        # CALCUL SÉCURISÉ
-        now = time.time()
-        start = db["start_time"]
-        diff = now - start
-        remaining = max(0, (90 * 60) - diff)
-        
+        # CALCULS
+        remaining = max(0, (90 * 60) - (time.time() - db["start_time"]))
         m, s = divmod(int(remaining), 60)
         
-        # TRANSFORMATION EN STRING AVANT LE MARKDOWN (Évite le TypeError)
-        timer_text = f"{m:02d}:{s:02d}"
-        team_name = st.session_state.role.split('_')[1].upper()
-
-        # AFFICHAGE HTML SIMPLIFIÉ
-        st.markdown(f"""
-            <div style="background-color:#1a1a1a; padding:20px; border-radius:10px; border:4px solid #e67e22; text-align:center;">
-                <h1 style="color:#e67e22; font-family:monospace; font-size:60px; margin:0;">{timer_text}</h1>
-                <strong style="color:white;">EQUIPE {team_name}</strong>
-            </div>
-        """, unsafe_allow_stdio=True)
+        # AFFICHAGE NATIF (SANS HTML POUR ÉVITER LE TYPEERROR)
+        st.title(f"🕵️ ÉQUIPE {st.session_state.role.split('_')[1].upper()}")
+        st.metric("TEMPS RESTANT", f"{m:02d}:{s:02d}")
         
-        st.write("---")
+        st.divider()
         
-        # CODE INPUT
-        res = st.text_input("Entrez un code :", key="play_input")
-        if st.button("Valider"):
-            if res == "8821": st.balloons(); st.success("Sortie débloquée !")
-            else: st.error("Code erroné")
+        # ZONE DE CODE
+        with st.container():
+            res = st.text_input("Entrez un code secret :", key="play_input")
+            if st.button("Valider le code"):
+                if res == "8821": 
+                    st.balloons()
+                    st.success("SORTIE DÉBLOQUÉE !")
+                elif res == "1234":
+                    st.warning("Indice : Regardez sous la table.")
+                else: 
+                    st.error("Code erroné")
 
+        # RAFRAÎCHISSEMENT
         if remaining > 0:
             time.sleep(1)
             st.rerun()
+        else:
+            st.error("TEMPS ÉCOULÉ !")
 
 # --- LOGIN ADMIN ---
 elif st.session_state.role == "Admin_Login":
