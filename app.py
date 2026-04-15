@@ -85,8 +85,3 @@ else:
             if st.button("Envoyer"):
                 st.session_state.db["messages"].append(f"{st.session_state.user} : {p_msg}")
                 st.rerun()
-            
-            player_msg = st.text_input("Ecrire à l'autre équipe...")
-            if st.button("Envoyer"):
-                send_message(st.session_state.logged_in, "Tous", player_msg)
-                st.rerun()
