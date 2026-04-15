@@ -1,109 +1,90 @@
 import streamlit as st
 import time
 
-# Configuration de la page
-st.set_page_config(page_title="Manoir Goorse PRO", layout="wide", page_icon="🕵️")
+# Configuration
+st.set_page_config(page_title="Manoir Goorse PRO", layout="wide")
 
-# Initialisation de la base de données fictive (Session State)
-if 'game_started' not in st.session_state:
-    st.session_state.game_started = False
-    st.session_state.ready = {"Lumière": False, "Ombre": False}
-    st.session_state.names = {"Lumière": "", "Ombre": ""}
-    st.session_state.start_time = None
-    st.session_state.messages = []
-    st.session_state.logs = []
-
-# --- FONCTION DE MESSAGERIE ---
-def send_message(sender, recipient, text):
-    st.session_state.messages.append({
-        "time": time.strftime("%H:%M"),
-        "from": sender,
-        "to": recipient,
-        "text": text
-    })
+# --- INITIALISATION DES VARIABLES GLOBALES ---
+# On utilise st.cache_resource pour simuler une petite base de données partagée
+if 'db' not in st.session_state:
+    st.session_state.db = {
+        "game_started": False,
+        "ready_lumiere": False,
+        "ready_ombre": False,
+        "start_time": None,
+        "messages": []
+    }
 
 # --- SYSTÈME DE CONNEXION ---
-if 'logged_in' not in st.session_state:
-    st.title("🔐 Accès au Système Goorse")
-    role = st.selectbox("Rôle", ["Joueur", "Administrateur"])
-    user_id = st.text_input("Identifiant")
-    pwd = st.text_input("Mot de passe", type="password")
-    
+if 'user' not in st.session_state:
+    st.title("🔐 Accès Manoir Goorse")
+    u = st.text_input("Identifiant")
+    p = st.text_input("Mot de passe", type="password")
     if st.button("Connexion"):
-        if role == "Administrateur" and user_id == "Louis" and pwd == "louis654321":
-            st.session_state.logged_in = "Admin"
-            st.rerun()
-        elif role == "Joueur" and user_id:
-            st.session_state.logged_in = user_id
+        if u == "Louis" and p == "louis654321":
+            st.session_state.user = "Admin"
             st.rerun()
         else:
-            st.error("Identifiants incorrects")
+            st.session_state.user = u
+            st.rerun()
     st.stop()
 
 # --- INTERFACE ADMIN (LOUIS) ---
-if st.session_state.logged_in == "Admin":
-    st.title("🛡️ Dashboard Superviseur - Louis")
+if st.session_state.user == "Admin":
+    st.title("🛡️ Dashboard de Louis")
     
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Lumière", "PRÊT" if st.session_state.ready["Lumière"] else "Attente", delta_color="normal")
-    col2.metric("Ombre", "PRÊT" if st.session_state.ready["Ombre"] else "Attente")
-    col3.write(f"Noms : {st.session_state.names['Lumière']} & {st.session_state.names['Ombre']}")
-
-    if not st.session_state.game_started:
-        if st.button("🚀 LANCER LA PARTIE POUR TOUS", use_container_width=True):
-            st.session_state.game_started = True
-            st.session_state.start_time = time.time()
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("🚀 LANCER LA PARTIE MAINTENANT"):
+            st.session_state.db["game_started"] = True
+            st.session_state.db["start_time"] = time.time()
+            st.success("Partie lancée !")
+            
+    with col2:
+        if st.button("🔴 RESET TOUT"):
+            st.session_state.db["game_started"] = False
             st.rerun()
-    else:
-        st.success("La partie est en cours !")
 
-    st.markdown("---")
-    st.subheader("💬 Console de Communication")
-    target = st.radio("Destinataire :", ["Tous", "Lumière", "Ombre"])
-    admin_msg = st.text_input("Envoyer une consigne ou un indice...")
-    if st.button("Diffuser"):
-        send_message("ADMIN", target, admin_msg)
+    st.write("---")
+    st.subheader("Discussion")
+    msg = st.text_input("Message aux équipes")
+    if st.button("Envoyer"):
+        st.session_state.db["messages"].append(f"LOUIS : {msg}")
 
 # --- INTERFACE JOUEURS ---
 else:
-    st.title(f"🏰 Manoir Goorse")
-    
-    if not st.session_state.game_started:
-        st.info("Configuration de l'équipe")
-        team = st.radio("Votre équipe :", ["Lumière", "Ombre"])
-        name = st.text_input("Votre prénom :")
-        if st.button("Prêt !"):
-            st.session_state.ready[team] = True
-            st.session_state.names[team] = name
-            st.success("En attente du signal de Louis...")
-    
+    # AUTO-REFRESH : Cette ligne force l'app à vérifier le statut toutes les 3 secondes
+    if not st.session_state.db["game_started"]:
+        st.title(f"Bienvenue {st.session_state.user}")
+        st.warning("Attente du lancement par Louis... L'écran s'actualisera tout seul.")
+        time.sleep(3)
+        st.rerun()
     else:
-        # Chrono
-        elapsed = time.time() - st.session_state.start_time
+        st.title("🎮 LA PARTIE A COMMENCÉ !")
+        
+        # Calcul du temps
+        elapsed = time.time() - st.session_state.db["start_time"]
         remaining = max(0, (90 * 60) - elapsed)
         mins, secs = divmod(int(remaining), 60)
         
-        st.sidebar.header(f"⏳ {mins:02d}:{secs:02d}")
-        st.sidebar.progress(remaining / (90 * 60))
-
-        tab_play, tab_chat = st.tabs(["🧩 Énigmes", "💬 Communication"])
-
-        with tab_play:
-            st.subheader("Vérification de code")
-            code_guess = st.text_input("Entrez un code :")
-            if st.button("Vérifier"):
-                if code_guess == "8821":
-                    st.balloons()
-                    st.success("LIBERTÉ ! Vous avez gagné !")
-                else:
-                    st.error("Code erroné.")
-
-        with tab_chat:
-            st.subheader("Chat Inter-Équipes")
-            # Affichage des messages
-            for m in st.session_state.messages:
-                if m["to"] in ["Tous", st.session_state.names.get("Lumière"), st.session_state.names.get("Ombre")] or m["from"] == "ADMIN":
-                    st.write(f"**[{m['time']}] {m['from']}** : {m['text']}")
+        st.header(f"⏳ Temps restant : {mins:02d}:{secs:02d}")
+        
+        # Chat et Actions
+        tab1, tab2 = st.tabs(["Actions", "Chat"])
+        with tab1:
+            st.write("Consultez vos cartes PDF !")
+            code = st.text_input("Code secret")
+            if st.button("Valider"):
+                if code == "8821": st.success("GAGNÉ")
+                else: st.error("Faux")
+        
+        with tab2:
+            for m in st.session_state.db["messages"]:
+                st.write(m)
+            p_msg = st.text_input("Message")
+            if st.button("Envoyer"):
+                st.session_state.db["messages"].append(f"{st.session_state.user} : {p_msg}")
+                st.rerun()
             
             player_msg = st.text_input("Ecrire à l'autre équipe...")
             if st.button("Envoyer"):
