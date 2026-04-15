@@ -2,15 +2,15 @@ import streamlit as st
 import time
 
 # --- CONFIGURATION ---
-st.set_page_config(page_title="Manoir Goorse PRO", layout="centered")
+st.set_page_config(page_title="Manoir Goorse - Officiel", layout="centered")
 
-# --- MÉMOIRE PARTAGÉE (SYNCHRONISATION) ---
+# --- MÉMOIRE PARTAGÉE ---
 @st.cache_resource
 def get_global_db():
     return {
         "game_started": False,
         "start_time": 0.0,
-        "messages": [], # Liste de dict: {"from": str, "to": str, "text": str, "time": str}
+        "messages": [],
         "teams": {
             "Lumière": {"membres": "", "prets": False}, 
             "Ombre": {"membres": "", "prets": False}
@@ -19,19 +19,14 @@ def get_global_db():
 
 db = get_global_db()
 
-# --- FONCTION D'ENVOI DE MESSAGE ---
 def send_msg(sender, receiver, text):
     if text:
-        db["messages"].append({
-            "from": sender,
-            "to": receiver,
-            "text": text,
-            "time": time.strftime("%H:%M")
-        })
+        db["messages"].append({"from": sender, "to": receiver, "text": text, "time": time.strftime("%H:%M")})
 
 # --- NAVIGATION ---
 if 'role' not in st.session_state:
-    st.title("🏰 Système Manoir Goorse")
+    st.title("🏰 Unlock! Le Manoir de Goorse")
+    st.markdown("_Application de coordination pour deux équipes_")
     c1, c2 = st.columns(2)
     if c1.button("🔑 ADMIN"): st.session_state.role = "Admin_Login"; st.rerun()
     if c2.button("🎮 JOUEUR"): st.session_state.role = "Joueur_Config"; st.rerun()
@@ -39,92 +34,99 @@ if 'role' not in st.session_state:
 
 # --- INTERFACE ADMIN (LOUIS) ---
 if st.session_state.role == "Admin":
-    st.title("🛡️ Dashboard de Louis")
+    st.title("🛡️ Superviseur : Louis")
     
-    # Statut des équipes
     col_l, col_o = st.columns(2)
     col_l.write(f"Lumière: **{db['teams']['Lumière']['membres']}** ({'✅' if db['teams']['Lumière']['prets'] else '❌'})")
     col_o.write(f"Ombre: **{db['teams']['Ombre']['membres']}** ({'✅' if db['teams']['Ombre']['prets'] else '❌'})")
     
-    # Chrono & Reset
     if db["game_started"]:
         rem = max(0, (90 * 60) - (time.time() - db["start_time"]))
-        st.metric("⏳ CHRONO", f"{int(rem//60):02d}:{int(rem%60):02d}")
-        if st.button("🔴 RESET"): db["game_started"] = False; st.rerun()
-    elif st.button("🚀 LANCER LA PARTIE", use_container_width=True):
+        st.metric("⏳ TEMPS RESTANT", f"{int(rem//60):02d}:{int(rem%60):02d}")
+        if st.button("🔴 RESET GÉNÉRAL"): db["game_started"] = False; st.rerun()
+    elif st.button("🚀 LANCER L'AVENTURE", use_container_width=True):
         db["start_time"] = time.time(); db["game_started"] = True; st.rerun()
 
     st.divider()
+    st.subheader("💬 Console de Communication")
+    dest = st.radio("Destinataire :", ["Tous", "Lumière", "Ombre"], horizontal=True)
+    msg_admin = st.text_input("Message ou Indice :")
+    if st.button("Envoyer"):
+        send_msg("LOUIS", dest, msg_admin); st.rerun()
 
-    # SECTION MESSAGERIE ADMIN
-    st.subheader("💬 Centre de Communication (Louis)")
-    dest = st.radio("Envoyer à :", ["Tous", "Lumière", "Ombre"], horizontal=True)
-    msg_admin = st.text_input("Votre message secret ou indice :")
-    if st.button("Diffuser le message"):
-        send_msg("LOUIS", dest, msg_admin)
-        st.rerun()
-
-    st.write("**Historique de tous les échanges :**")
-    for m in reversed(db["messages"]):
+    st.write("**Derniers messages :**")
+    for m in reversed(db["messages"][-10:]):
         st.caption(f"[{m['time']}] {m['from']} ➡️ {m['to']}: {m['text']}")
 
     if db["game_started"]: time.sleep(2); st.rerun()
 
-# --- INTERFACE JOUEUR ---
+# --- CONFIGURATION JOUEUR ---
+elif st.session_state.role == "Joueur_Config":
+    st.title("📝 Inscription Équipe")
+    eq = st.radio("Votre camp :", ["Lumière", "Ombre"])
+    noms = st.text_input("Prénoms des joueurs :")
+    if st.button("Rejoindre le Manoir"):
+        if noms:
+            db["teams"][eq]["membres"] = noms; db["teams"][eq]["prets"] = True
+            st.session_state.role = f"Joueur_{eq}"; st.rerun()
+
+# --- INTERFACE DE JEU JOUEUR ---
 elif "Joueur_" in st.session_state.role:
-    equipe_actuelle = st.session_state.role.split('_')[1]
-    autre_equipe = "Ombre" if equipe_actuelle == "Lumière" else "Lumière"
+    equipe = st.session_state.role.split('_')[1]
+    autre = "Ombre" if equipe == "Lumière" else "Lumière"
     
     if not db["game_started"]:
-        st.title(f"⏳ Équipe {equipe_actuelle}")
-        st.info("Attente du signal de Louis...")
+        st.title(f"⏳ Équipe {equipe}")
+        st.info("Préparez vos cartes... Louis va lancer le signal.")
         time.sleep(3); st.rerun()
     else:
         rem = max(0, (90 * 60) - (time.time() - db["start_time"]))
-        st.metric("TEMPS RESTANT", f"{int(rem//60):02d}:{int(rem%60):02d}")
+        st.metric("TEMPS", f"{int(rem//60):02d}:{int(rem%60):02d}")
 
-        tab_jeu, tab_chat = st.tabs(["🧩 Jeu & Cartes", "💬 Messagerie"])
+        tab1, tab2 = st.tabs(["🧩 Énigmes & Codes", "💬 Talkie-Walkie"])
 
-        with tab_jeu:
-            if st.button("🎴 Voir mes Cartes"):
-                st.session_state.show_cards = not st.session_state.get('show_cards', False)
-            if st.session_state.get('show_cards'):
-                st.info("Indices : " + ("Cartes L1, L2" if equipe_actuelle == "Lumière" else "Cartes O1, O2"))
+        with tab1:
+            st.subheader(f"Mission : {equipe}")
+            # Histoire basée sur le PDF
+            st.write("Le Professeur Goorse vous a piégés. Vous devez réunir les 4 chiffres du code final.")
             
-            code = st.text_input("Saisir un code :")
-            if st.button("Valider"):
-                if code == "8821": st.balloons(); st.success("BRAVO !")
-                else: st.error("Code erroné")
+            with st.expander("📖 Vos indices de départ"):
+                if equipe == "Lumière":
+                    st.write("- **La bibliothèque :** Cherchez le livre rouge.")
+                    st.write("- **Le miroir :** Il semble y avoir un chiffre caché, mais il faut plus de lumière.")
+                else:
+                    st.write("- **Le coffre-fort :** Il nécessite une clé que seule l'autre équipe peut voir.")
+                    st.write("- **La lampe UV :** Elle révèle ce qui est invisible à l'œil nu.")
 
-        with tab_chat:
-            st.subheader(f"Chat Équipe {equipe_actuelle}")
-            
-            # Envoi de message
-            dest_joueur = st.selectbox("Destinataire :", [autre_equipe, "LOUIS"])
-            msg_joueur = st.text_input("Votre message...")
+            # Saisie de codes
+            code = st.text_input("Entrez un code trouvé (4 chiffres) :")
+            if st.button("Vérifier le code"):
+                # Logique basée sur la solution PDF
+                if code == "8821":
+                    st.balloons()
+                    st.success("BRAVO ! Vous avez ouvert la grande porte. Vous êtes LIBRES !")
+                elif code == "4592": # Exemple de code intermédiaire
+                    st.info("Vous avez déverrouillé le tiroir secret. Donnez le chiffre '8' à l'autre équipe.")
+                else:
+                    st.error("Rien ne se passe... Recommencez.")
+
+        with tab2:
+            st.subheader("Communication")
+            dest_j = st.selectbox("Envoyer à :", [autre, "LOUIS"])
+            msg_j = st.text_input("Votre message...")
             if st.button("Envoyer"):
-                send_msg(equipe_actuelle, dest_joueur, msg_joueur)
-                st.rerun()
-
-            # Affichage des messages filtrés
-            st.write("---")
+                send_msg(equipe, dest_j, msg_j); st.rerun()
+            
+            st.divider()
             for m in reversed(db["messages"]):
-                # On voit les messages pour "Tous", ou ceux qui nous sont destinés, ou ceux qu'on a envoyés
-                if m["to"] == "Tous" or m["to"] == equipe_actuelle or m["from"] == equipe_actuelle:
-                    color = "orange" if m["from"] == "LOUIS" else "white"
-                    st.markdown(f"<span style='color:{color}'>**[{m['time']}] {m['from']}** : {m['text']}</span>", unsafe_allow_html=True)
+                if m["to"] in ["Tous", equipe] or m["from"] == equipe:
+                    color = "#e67e22" if m["from"] == "LOUIS" else "white"
+                    st.markdown(f"<p style='color:{color}'><b>[{m['time']}] {m['from']}</b> : {m['text']}</p>", unsafe_allow_html=True)
 
         if rem > 0: time.sleep(2); st.rerun()
 
-# --- CONFIG & LOGIN (Reste du code inchangé) ---
-elif st.session_state.role == "Joueur_Config":
-    st.title("Inscriptions")
-    eq = st.radio("Equipe", ["Lumière", "Ombre"])
-    noms = st.text_input("Prénoms :")
-    if st.button("Confirmer"):
-        db["teams"][eq]["membres"] = noms; db["teams"][eq]["prets"] = True
-        st.session_state.role = f"Joueur_{eq}"; st.rerun()
+# --- LOGIN ADMIN ---
 elif st.session_state.role == "Admin_Login":
-    p = st.text_input("Mdp", type="password")
-    if st.button("OK"):
+    p = st.text_input("Mot de passe", type="password")
+    if st.button("Se connecter"):
         if p == "louis654321": st.session_state.role = "Admin"; st.rerun()
