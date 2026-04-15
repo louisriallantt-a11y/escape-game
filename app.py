@@ -7,9 +7,10 @@ st.set_page_config(page_title="Manoir Goorse PRO", layout="centered")
 # --- MÉMOIRE PARTAGÉE (SYNCHRO RÉELLE) ---
 @st.cache_resource
 def get_global_db():
+    # Initialisation unique pour tous les utilisateurs
     return {
         "game_started": False,
-        "start_time": None,
+        "start_time": 0,
         "messages": [],
         "teams": {"Lumière": {"prets": False}, "Ombre": {"prets": False}}
     }
@@ -28,19 +29,20 @@ if 'role' not in st.session_state:
 if st.session_state.role == "Admin":
     st.title("🛡️ Dashboard de Louis")
     
-    st.write(f"Équipe Lumière : {'✅ PRÊT' if db['teams']['Lumière']['prets'] else '❌ ATTENTE'}")
-    st.write(f"Équipe Ombre : {'✅ PRÊT' if db['teams']['Ombre']['prets'] else '❌ ATTENTE'}")
+    col_l, col_o = st.columns(2)
+    col_l.metric("Lumière", "✅ PRÊT" if db['teams']['Lumière']['prets'] else "❌ ATTENTE")
+    col_o.metric("Ombre", "✅ PRÊT" if db['teams']['Ombre']['prets'] else "❌ ATTENTE")
     
     if not db["game_started"]:
         if st.button("🚀 LANCER LA PARTIE", use_container_width=True):
-            db["game_started"] = True
             db["start_time"] = time.time()
+            db["game_started"] = True
             st.rerun()
     else:
-        # Affichage temps pour Admin
-        elapsed = time.time() - db["start_time"]
-        rem = max(0, (90 * 60) - elapsed)
-        st.metric("Temps Global", f"{int(rem//60):02d}:{int(rem%60):02d}")
+        # Calcul temps Admin
+        rem_admin = max(0, (90 * 60) - (time.time() - db["start_time"]))
+        st.header(f"⏳ GLOBAL : {int(rem_admin//60):02d}:{int(rem_admin%60):02d}")
+        
         if st.button("🔴 RESET GÉNÉRAL"):
             db["game_started"] = False
             db["teams"]["Lumière"]["prets"] = False
@@ -60,46 +62,42 @@ elif st.session_state.role == "Joueur_Config":
 
 # --- INTERFACE DE JEU JOUEUR ---
 elif "Joueur_" in st.session_state.role:
-    if not db["game_started"]:
+    # On vérifie si la partie est lancée ET si le start_time est bien enregistré
+    if not db["game_started"] or db["start_time"] == 0:
         st.title("⏳ Attente de Louis...")
-        st.info("La partie va bientôt commencer. Préparez vos cartes !")
+        st.info("La partie va bientôt commencer. Préparez vos fiches !")
         time.sleep(2)
         st.rerun()
     else:
-        # CALCUL DU TEMPS SÉCURISÉ
-        try:
-            elapsed = time.time() - db["start_time"]
-            remaining = max(0, (90 * 60) - elapsed)
-            mins, secs = divmod(int(remaining), 60)
-            
-            # Affichage du Chrono (HTML)
-            st.markdown(f"""
-                <div style="text-align: center; border: 5px solid #e67e22; padding: 20px; border-radius: 10px; background-color: #2c3e50; color: white;">
-                    <h1 style="font-size: 60px; margin: 0;">{mins:02d}:{secs:02d}</h1>
-                    <p>TEMPS RESTANT - EQUIPE {st.session_state.role.split('_')[1].upper()}</p>
-                </div>
-            """, unsafe_allow_stdio=True)
-            
-            st.write("---")
-            
-            # SAISIE DU CODE POUR LE JOUEUR
-            code_input = st.text_input("Tapez un code d'objet ou de porte :", key="play_code")
-            if st.button("VALIDER LE CODE"):
-                # Exemple de logique de code
-                if code_input == "8821":
-                    st.balloons()
-                    st.success("BRAVO ! Vous avez ouvert la porte finale !")
-                elif code_input == "1234":
-                    st.info("Le coffre s'ouvre... Vous trouvez un nouveau fragment de carte.")
-                else:
-                    st.error("Code erroné ou objet non trouvé.")
-            
-            # Refresh du chrono
-            if remaining > 0:
-                time.sleep(1)
-                st.rerun()
-        except Exception as e:
-            st.error("Erreur de synchronisation... reconnexion au chrono.")
+        # CALCUL DU TEMPS (Sécurisé : on s'assure que start_time est un nombre)
+        now = time.time()
+        elapsed = now - db["start_time"]
+        remaining = max(0, (90 * 60) - elapsed)
+        mins, secs = divmod(int(remaining), 60)
+        
+        # Affichage du Chrono
+        st.markdown(f"""
+            <div style="text-align: center; border: 5px solid #e67e22; padding: 20px; border-radius: 10px; background-color: #1a1a1a; color: #e67e22;">
+                <h1 style="font-size: 70px; margin: 0;">{mins:02d}:{secs:02d}</h1>
+                <p style="color: white;">ÉQUIPE {st.session_state.role.split('_')[1].upper()}</p>
+            </div>
+        """, unsafe_allow_stdio=True)
+        
+        st.write("---")
+        
+        # ZONE DE SAISIE DES CODES
+        code_input = st.text_input("Entrez un code (ex: 8821) :", key="play_code")
+        if st.button("VALIDER"):
+            if code_input == "8821":
+                st.balloons()
+                st.success("FÉLICITATIONS ! Vous êtes sortis du Manoir !")
+            elif code_input == "1234":
+                st.info("Le tiroir s'ouvre... regardez la carte L2.")
+            else:
+                st.error("Code incorrect.")
+
+        # Rafraîchissement automatique
+        if remaining > 0:
             time.sleep(1)
             st.rerun()
 
