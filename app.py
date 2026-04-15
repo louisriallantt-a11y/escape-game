@@ -4,7 +4,7 @@ import time
 # --- CONFIGURATION ---
 st.set_page_config(page_title="Manoir Goorse PRO", layout="centered")
 
-# --- MÉMOIRE PARTAGÉE ---
+# --- MÉMOIRE PARTAGÉE (SYNCHRONISATION) ---
 @st.cache_resource
 def get_global_db():
     return {
@@ -18,7 +18,11 @@ def get_global_db():
 
 db = get_global_db()
 
-# --- INITIALISATION SESSION ---
+# --- INITIALISATION ÉTAT LOCAL ---
+if 'show_cards' not in st.session_state:
+    st.session_state.show_cards = False
+
+# --- LOGIQUE DE NAVIGATION ---
 if 'role' not in st.session_state:
     st.title("🏰 Bienvenue au Manoir Goorse")
     c1, c2 = st.columns(2)
@@ -26,23 +30,20 @@ if 'role' not in st.session_state:
     if c2.button("🎮 REJOINDRE ÉQUIPE"): st.session_state.role = "Joueur_Config"; st.rerun()
     st.stop()
 
-# --- LOGIQUE ADMIN (LOUIS) ---
+# --- INTERFACE ADMIN (LOUIS) ---
 if st.session_state.role == "Admin":
     st.title("🛡️ Dashboard de Louis")
-    
     col_l, col_o = st.columns(2)
     with col_l:
         st.subheader("Équipe Lumière")
-        st.write(f"Joueurs : **{db['teams']['Lumière']['membres'] if db['teams']['Lumière']['membres'] else 'En attente...'}**")
+        st.write(f"Joueurs : **{db['teams']['Lumière']['membres']}**")
         st.write("Prêt :", "✅" if db['teams']['Lumière']['prets'] else "❌")
-    
     with col_o:
         st.subheader("Équipe Ombre")
-        st.write(f"Joueurs : **{db['teams']['Ombre']['membres'] if db['teams']['Ombre']['membres'] else 'En attente...'}**")
+        st.write(f"Joueurs : **{db['teams']['Ombre']['membres']}**")
         st.write("Prêt :", "✅" if db['teams']['Ombre']['prets'] else "❌")
     
     st.divider()
-    
     if not db["game_started"]:
         if st.button("🚀 LANCER LA PARTIE", use_container_width=True):
             db["start_time"] = time.time()
@@ -55,8 +56,6 @@ if st.session_state.role == "Admin":
             db["game_started"] = False
             db["teams"]["Lumière"]["prets"] = False
             db["teams"]["Ombre"]["prets"] = False
-            db["teams"]["Lumière"]["membres"] = ""
-            db["teams"]["Ombre"]["membres"] = ""
             st.rerun()
         time.sleep(1)
         st.rerun()
@@ -65,60 +64,73 @@ if st.session_state.role == "Admin":
 elif st.session_state.role == "Joueur_Config":
     st.title("📝 Inscription")
     eq = st.radio("Choisissez votre équipe :", ["Lumière", "Ombre"])
-    noms_input = st.text_input("Prénoms des joueurs (ex: Jean et Marc) :")
-    
-    if st.button("Confirmer l'inscription"):
-        if noms_input:
-            db["teams"][eq]["membres"] = noms_input
+    noms = st.text_input("Prénoms des joueurs :")
+    if st.button("Confirmer"):
+        if noms:
+            db["teams"][eq]["membres"] = noms
             db["teams"][eq]["prets"] = True
             st.session_state.role = f"Joueur_{eq}"
             st.rerun()
-        else:
-            st.error("Merci d'entrer vos noms.")
 
 # --- INTERFACE DE JEU JOUEUR ---
 elif "Joueur_" in st.session_state.role:
-    equipe_actuelle = st.session_state.role.split('_')[1]
+    equipe = st.session_state.role.split('_')[1]
     
-    if not db["game_started"] or db["start_time"] <= 0:
-        st.title(f"⏳ Équipe {equipe_actuelle}")
-        st.info("Inscription réussie ! Louis va bientôt lancer le chrono.")
+    if not db["game_started"]:
+        st.title(f"⏳ Équipe {equipe}")
+        st.info("Attente du lancement par Louis...")
         time.sleep(2)
         st.rerun()
     else:
-        # CALCULS
-        remaining = max(0, (90 * 60) - (time.time() - db["start_time"]))
+        # CALCUL TEMPS
+        elapsed = time.time() - db["start_time"]
+        remaining = max(0, (90 * 60) - elapsed)
         m, s = divmod(int(remaining), 60)
         
-        st.title(f"🕵️ Équipe {equipe_actuelle.upper()}")
+        st.title(f"🕵️ Équipe {equipe.upper()}")
         st.metric("TEMPS RESTANT", f"{m:02d}:{s:02d}")
         
-        # SECTION HISTOIRE
-        with st.expander("📖 Lire l'Histoire"):
-            st.write("""
-            Le Professeur Goorse a disparu en laissant derrière lui ce manoir piégé. 
-            Une seule issue existe, mais elle nécessite la coordination parfaite entre l'ombre et la lumière.
-            Le gaz neurotoxique sera libéré dans 90 minutes. Bonne chance.
+        # --- L'HISTOIRE ---
+        with st.expander("📖 L'AFFAIRE GOORSE (HISTOIRE)", expanded=True):
+            st.write(f"""
+            **Rapport de Mission :**
+            Vous avez été envoyés par l'agence pour récupérer le prototype du Professeur Goorse. 
+            Mais c'était un piège. Les portes se sont verrouillées et un mécanisme complexe 
+            sépare vos deux groupes par un mur de verre blindé.
+            
+            **Votre mission :** Échanger vos informations pour désactiver les verrous. 
+            L'équipe **Lumière** possède les codes de déchiffrement, mais l'équipe **Ombre** possède les outils pour les lire.
             """)
 
-        # SECTION CARTES (DYNAMIQUE)
-        if st.button("🎴 Voir mes Cartes"):
-            st.divider()
-            if equipe_actuelle == "Lumière":
-                st.info("**Carte L1 :** Le Miroir. Inscription invisible (besoin de la lampe UV de l'équipe Ombre).")
-                st.info("**Carte L2 :** Le Code Solaire. Symboles : ☀️ ☁️ ⭐")
+        # --- LES CARTES (FIXES) ---
+        if st.button("🎴 Afficher/Masquer mes Cartes"):
+            st.session_state.show_cards = not st.session_state.show_cards
+
+        if st.session_state.show_cards:
+            st.subheader("Vos indices actuels :")
+            if equipe == "Lumière":
+                st.warning("**CARTE L1 - Le Miroir de Goorse**")
+                st.write("Le miroir semble vide, mais il réagit à une certaine longueur d'onde.")
+                st.warning("**CARTE L2 - Dispositif Solaire**")
+                st.write("Un cadran avec trois symboles. Seule l'autre équipe peut voir la position des aiguilles.")
             else:
-                st.info("**Carte O1 :** La Lampe UV. Permet de lire les miroirs (utile pour l'équipe Lumière).")
-                st.info("**Carte O3 :** Le Code Lunaire. Symboles : 🌙 ☁️ ⚡")
-        
+                st.info("**CARTE O1 - Lampe de Blacklight**")
+                st.write("L'ampoule émet une lumière UV. Essayez de la pointer vers les objets de l'autre équipe.")
+                st.info("**CARTE O2 - Boîtier Mystère**")
+                st.write("Contient un bouton. Une fois pressé, il envoie un code à l'autre équipe.")
+            
+            st.caption("Consultez le PDF 'Manoir_Goorse.pdf' pour les visuels complets.")
+
         st.divider()
         
         # ZONE DE CODE
-        code_res = st.text_input("Entrez un code :", key="game_input")
+        code = st.text_input("Saisir un code débloqué :", key="game_code")
         if st.button("Valider"):
-            if code_res == "8821": st.balloons(); st.success("LIBERTÉ !")
-            else: st.error("Code erroné")
+            if code == "8821": st.balloons(); st.success("LA PORTE FINALE S'OUVRE !")
+            elif code == "1234": st.info("Objet débloqué : La clé de cuivre.")
+            else: st.error("Code erroné.")
 
+        # RAFRAÎCHISSEMENT
         if remaining > 0:
             time.sleep(1)
             st.rerun()
