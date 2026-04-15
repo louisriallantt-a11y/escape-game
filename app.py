@@ -4,49 +4,44 @@ import time
 # --- CONFIGURATION ---
 st.set_page_config(page_title="Manoir Goorse PRO", layout="centered")
 
-# --- MÉMOIRE PARTAGÉE (SYNCHRO RÉELLE) ---
+# --- MÉMOIRE PARTAGÉE ---
 @st.cache_resource
 def get_global_db():
-    # Initialisation unique pour tous les utilisateurs
     return {
         "game_started": False,
-        "start_time": 0,
+        "start_time": 0.0,
         "messages": [],
         "teams": {"Lumière": {"prets": False}, "Ombre": {"prets": False}}
     }
 
 db = get_global_db()
 
-# --- INITIALISATION SESSION LOCALE ---
+# --- INITIALISATION SESSION ---
 if 'role' not in st.session_state:
-    st.title("🏰 Bienvenue au Manoir Goorse")
+    st.title("🏰 Manoir Goorse")
     c1, c2 = st.columns(2)
-    if c1.button("🔑 ACCÈS ADMIN"): st.session_state.role = "Admin_Login"; st.rerun()
-    if c2.button("🎮 REJOINDRE ÉQUIPE"): st.session_state.role = "Joueur_Config"; st.rerun()
+    if c1.button("🔑 ADMIN"): st.session_state.role = "Admin_Login"; st.rerun()
+    if c2.button("🎮 JOUEUR"): st.session_state.role = "Joueur_Config"; st.rerun()
     st.stop()
 
-# --- LOGIQUE ADMIN (LOUIS) ---
+# --- LOGIQUE ADMIN ---
 if st.session_state.role == "Admin":
-    st.title("🛡️ Dashboard de Louis")
-    
+    st.title("🛡️ Dashboard Louis")
     col_l, col_o = st.columns(2)
-    col_l.metric("Lumière", "✅ PRÊT" if db['teams']['Lumière']['prets'] else "❌ ATTENTE")
-    col_o.metric("Ombre", "✅ PRÊT" if db['teams']['Ombre']['prets'] else "❌ ATTENTE")
+    col_l.metric("Lumière", "✅" if db['teams']['Lumière']['prets'] else "❌")
+    col_o.metric("Ombre", "✅" if db['teams']['Ombre']['prets'] else "❌")
     
     if not db["game_started"]:
-        if st.button("🚀 LANCER LA PARTIE", use_container_width=True):
+        if st.button("🚀 LANCER", use_container_width=True):
             db["start_time"] = time.time()
             db["game_started"] = True
             st.rerun()
     else:
-        # Calcul temps Admin
+        # Affichage temps Admin simplifié (sans HTML complexe pour éviter les crashs)
         rem_admin = max(0, (90 * 60) - (time.time() - db["start_time"]))
-        st.header(f"⏳ GLOBAL : {int(rem_admin//60):02d}:{int(rem_admin%60):02d}")
-        
-        if st.button("🔴 RESET GÉNÉRAL"):
+        st.subheader(f"⏳ GLOBAL : {int(rem_admin//60):02d}:{int(rem_admin%60):02d}")
+        if st.button("🔴 RESET"):
             db["game_started"] = False
-            db["teams"]["Lumière"]["prets"] = False
-            db["teams"]["Ombre"]["prets"] = False
             st.rerun()
         time.sleep(1)
         st.rerun()
@@ -54,56 +49,55 @@ if st.session_state.role == "Admin":
 # --- CONFIGURATION JOUEUR ---
 elif st.session_state.role == "Joueur_Config":
     st.title("📝 Inscription")
-    equipe = st.radio("Choisissez votre équipe :", ["Lumière", "Ombre"])
-    if st.button("Valider l'équipe"):
-        db["teams"][equipe]["prets"] = True
-        st.session_state.role = f"Joueur_{equipe}"
+    eq = st.radio("Equipe :", ["Lumière", "Ombre"])
+    if st.button("Valider"):
+        db["teams"][eq]["prets"] = True
+        st.session_state.role = f"Joueur_{eq}"
         st.rerun()
 
 # --- INTERFACE DE JEU JOUEUR ---
 elif "Joueur_" in st.session_state.role:
-    # On vérifie si la partie est lancée ET si le start_time est bien enregistré
-    if not db["game_started"] or db["start_time"] == 0:
+    # Vérification stricte du lancement
+    if not db["game_started"] or db["start_time"] <= 0:
         st.title("⏳ Attente de Louis...")
-        st.info("La partie va bientôt commencer. Préparez vos fiches !")
         time.sleep(2)
         st.rerun()
     else:
-        # CALCUL DU TEMPS (Sécurisé : on s'assure que start_time est un nombre)
+        # CALCUL SÉCURISÉ
         now = time.time()
-        elapsed = now - db["start_time"]
-        remaining = max(0, (90 * 60) - elapsed)
-        mins, secs = divmod(int(remaining), 60)
+        start = db["start_time"]
+        diff = now - start
+        remaining = max(0, (90 * 60) - diff)
         
-        # Affichage du Chrono
+        m, s = divmod(int(remaining), 60)
+        
+        # TRANSFORMATION EN STRING AVANT LE MARKDOWN (Évite le TypeError)
+        timer_text = f"{m:02d}:{s:02d}"
+        team_name = st.session_state.role.split('_')[1].upper()
+
+        # AFFICHAGE HTML SIMPLIFIÉ
         st.markdown(f"""
-            <div style="text-align: center; border: 5px solid #e67e22; padding: 20px; border-radius: 10px; background-color: #1a1a1a; color: #e67e22;">
-                <h1 style="font-size: 70px; margin: 0;">{mins:02d}:{secs:02d}</h1>
-                <p style="color: white;">ÉQUIPE {st.session_state.role.split('_')[1].upper()}</p>
+            <div style="background-color:#1a1a1a; padding:20px; border-radius:10px; border:4px solid #e67e22; text-align:center;">
+                <h1 style="color:#e67e22; font-family:monospace; font-size:60px; margin:0;">{timer_text}</h1>
+                <strong style="color:white;">EQUIPE {team_name}</strong>
             </div>
         """, unsafe_allow_stdio=True)
         
         st.write("---")
         
-        # ZONE DE SAISIE DES CODES
-        code_input = st.text_input("Entrez un code (ex: 8821) :", key="play_code")
-        if st.button("VALIDER"):
-            if code_input == "8821":
-                st.balloons()
-                st.success("FÉLICITATIONS ! Vous êtes sortis du Manoir !")
-            elif code_input == "1234":
-                st.info("Le tiroir s'ouvre... regardez la carte L2.")
-            else:
-                st.error("Code incorrect.")
+        # CODE INPUT
+        res = st.text_input("Entrez un code :", key="play_input")
+        if st.button("Valider"):
+            if res == "8821": st.balloons(); st.success("Sortie débloquée !")
+            else: st.error("Code erroné")
 
-        # Rafraîchissement automatique
         if remaining > 0:
             time.sleep(1)
             st.rerun()
 
-# --- GESTION LOGIN ADMIN ---
+# --- LOGIN ADMIN ---
 elif st.session_state.role == "Admin_Login":
-    pwd = st.text_input("Code secret", type="password")
-    if st.button("Entrer"):
-        if pwd == "louis654321": st.session_state.role = "Admin"; st.rerun()
+    p = st.text_input("Mdp", type="password")
+    if st.button("OK"):
+        if p == "louis654321": st.session_state.role = "Admin"; st.rerun()
     if st.button("Retour"): del st.session_state.role; st.rerun()
